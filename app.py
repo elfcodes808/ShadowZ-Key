@@ -34,7 +34,7 @@ def index():
 @app.route('/addkey', methods=['POST'])
 def add_key():
     data = request.json
-    expiry_days = int(data.get("expiry_days", 7))  # default 7 days
+    expiry_days = int(data.get("expiry_days", 7))  # default to 7 days if not specified
     hwid_lock = data.get("hwid_lock", False)
 
     keys = load_keys()
@@ -53,4 +53,35 @@ def add_key():
 
     return jsonify({"success": True, "key": key})
 
-@app.route('/checkkey', methods=
+@app.route('/checkkey', methods=['POST'])
+def check_key():
+    data = request.json
+    key = data.get("key")
+    hwid = data.get("hwid")
+
+    if not key:
+        return jsonify({"success": False, "message": "No key provided"}), 400
+
+    keys = load_keys()
+
+    if key not in keys:
+        return jsonify({"success": False, "message": "Invalid key"})
+
+    key_data = keys[key]
+    expiry_date = datetime.fromisoformat(key_data["expiry_date"])
+
+    if datetime.utcnow() > expiry_date:
+        return jsonify({"success": False, "message": "Key expired"})
+
+    if key_data["hwid_lock"]:
+        if key_data["used_hwid"] is None:
+            # First time use, lock HWID
+            key_data["used_hwid"] = hwid
+            save_keys(keys)
+        elif key_data["used_hwid"] != hwid:
+            return jsonify({"success": False, "message": "HWID mismatch"})
+
+    return jsonify({"success": True, "message": "Key valid"})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)

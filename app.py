@@ -83,5 +83,19 @@ def check_key():
 
     return jsonify({"success": True, "message": "Key valid"})
 
+@app.route('/delkey', methods=['DELETE'])
+def delete_key():
+    data = request.json
+    key_to_delete = data.get("key")
+
+    keys = load_keys()
+
+    if key_to_delete in keys:
+        del keys[key_to_delete]
+        save_keys(keys)
+        return jsonify({"success": True, "message": f"Key {key_to_delete} deleted successfully."})
+    else:
+        return jsonify({"success": False, "message": "Key not found"}), 404
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

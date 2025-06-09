@@ -34,13 +34,20 @@ def index():
 @app.route('/addkey', methods=['POST'])
 def add_key():
     data = request.json
-    expiry_days = int(data.get("expiry_days", 7))  # default to 7 days if not specified
+    expiry_days = data.get("expiry_days")  # Can be "lifetime" or int
     hwid_lock = data.get("hwid_lock", False)
 
     keys = load_keys()
     key = generate_key()
 
-    expiry_date = (datetime.utcnow() + timedelta(days=expiry_days)).isoformat()
+    if expiry_days == "lifetime":
+        expiry_date = "lifetime"
+    else:
+        try:
+            expiry_days = int(expiry_days)
+        except (TypeError, ValueError):
+            expiry_days = 7  # default to 7 days if invalid or missing
+        expiry_date = (datetime.utcnow() + timedelta(days=expiry_days)).isoformat()
 
     keys[key] = {
         "expiry_date": expiry_date,
@@ -68,20 +75,27 @@ def check_key():
         return jsonify({"success": False, "message": "Invalid key"})
 
     key_data = keys[key]
-    expiry_date = datetime.fromisoformat(key_data["expiry_date"])
+    expiry_date_raw = key_data["expiry_date"]
 
-    if datetime.utcnow() > expiry_date:
-        return jsonify({"success": False, "message": "Key expired"})
+    # Skip expiration check for lifetime keys
+    if expiry_date_raw != "lifetime":
+        expiry_date = datetime.fromisoformat(expiry_date_raw)
+        if datetime.utcnow() > expiry_date:
+            return jsonify({"success": False, "message": "Key expired"})
 
     if key_data["hwid_lock"]:
         if key_data["used_hwid"] is None:
-            # First time use, lock HWID
+            # First use, lock HWID
             key_data["used_hwid"] = hwid
             save_keys(keys)
         elif key_data["used_hwid"] != hwid:
             return jsonify({"success": False, "message": "HWID mismatch"})
 
-    return jsonify({"success": True, "message": "Key valid"})
+    return jsonify({
+        "success": True,
+        "message": "Key valid",
+        "type": "lifetime" if expiry_date_raw == "lifetime" else "timed"
+    })
 
 @app.route('/delkey', methods=['DELETE'])
 def delete_key():

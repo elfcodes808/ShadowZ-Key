@@ -15,17 +15,16 @@ def load_keys():
     if os.path.exists(KEYS_FILE):
         with open(KEYS_FILE, "r") as f:
             return json.load(f)
-    else:
-        return {}
+    return {}
 
 def save_keys(keys):
     with open(KEYS_FILE, "w") as f:
         json.dump(keys, f, indent=4)
 
 def generate_key():
-    prefix = "ShadowZ-"
+    prefix = "SHADOWZ-"
     suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
-    return prefix + suffix
+    return (prefix + suffix).upper()
 
 @app.route('/')
 def index():
@@ -46,7 +45,7 @@ def add_key():
         try:
             expiry_days = int(expiry_days)
         except (TypeError, ValueError):
-            expiry_days = 7  # default to 7 days if invalid or missing
+            expiry_days = 7  # default
         expiry_date = (datetime.utcnow() + timedelta(days=expiry_days)).isoformat()
 
     keys[key] = {
@@ -63,8 +62,8 @@ def add_key():
 @app.route('/checkkey', methods=['POST'])
 def check_key():
     data = request.json
-    key = data.get("key")
-    hwid = data.get("hwid")
+    key = data.get("key", "").strip().upper()
+    hwid = data.get("hwid", "").strip()
 
     if not key:
         return jsonify({"success": False, "message": "No key provided"}), 400
@@ -75,17 +74,18 @@ def check_key():
         return jsonify({"success": False, "message": "Invalid key"})
 
     key_data = keys[key]
-    expiry_date_raw = key_data["expiry_date"]
+    expiry_date_raw = key_data.get("expiry_date", "")
 
-    # Skip expiration check for lifetime keys
     if expiry_date_raw != "lifetime":
-        expiry_date = datetime.fromisoformat(expiry_date_raw)
-        if datetime.utcnow() > expiry_date:
-            return jsonify({"success": False, "message": "Key expired"})
+        try:
+            expiry_date = datetime.fromisoformat(expiry_date_raw)
+            if datetime.utcnow() > expiry_date:
+                return jsonify({"success": False, "message": "Key expired"})
+        except ValueError:
+            return jsonify({"success": False, "message": "Invalid expiry format"})
 
-    if key_data["hwid_lock"]:
-        if key_data["used_hwid"] is None:
-            # First use, lock HWID
+    if key_data.get("hwid_lock", False):
+        if key_data.get("used_hwid") is None:
             key_data["used_hwid"] = hwid
             save_keys(keys)
         elif key_data["used_hwid"] != hwid:
@@ -100,7 +100,7 @@ def check_key():
 @app.route('/delkey', methods=['DELETE'])
 def delete_key():
     data = request.json
-    key_to_delete = data.get("key")
+    key_to_delete = data.get("key", "").strip().upper()
 
     keys = load_keys()
 
